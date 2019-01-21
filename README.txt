@@ -2,7 +2,7 @@
 Building locally on rPi
 =======================
 
-1) Copy multiCameraServer.py and runCamera to /home/pi
+1) Copy Final.py and runCamera to /home/pi
 2) Run "./runInteractive" in /home/pi or "sudo svc -t /service/camera" to
    restart service.
 
