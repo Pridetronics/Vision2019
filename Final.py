@@ -12,6 +12,7 @@ import sys
 import cv2
 import logging
 import numpy
+import socket
 from cscore import CameraServer, VideoSource
 from networktables import NetworkTablesInstance
 
@@ -158,11 +159,17 @@ if __name__ == "__main__":
     Logger = logging.getLogger("debugging logger")
     offset = 10
     while(True):
+        time.sleep(1)
         ret, frame = vidcap.read()
-        frame = cv2.resize(frame, (640, 480))
+        #   frame = cv2.resize(frame, (640, 480))
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         frame = cv2.adaptiveThreshold(frame,1,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,11,2)
         Logger.debug(frame[0][0])
+        image, contours, hier = cv2.findContours(frame, cv2.RETR_TREE,
+                cv2.CHAIN_APPROX_SIMPLE)
+        for c in contours:
+            x, y, w, h = cv2.boundingRect(c)
+            print(x)
         
     #vidcap.release()
     #cv2.destroyAllWindows()
