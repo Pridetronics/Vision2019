@@ -11,10 +11,11 @@ import time
 import sys
 import cv2
 import logging
-import numpy
+import numpy as np
 import socket
 from cscore import CameraServer, VideoSource
 from networktables import NetworkTablesInstance
+
 
 #   JSON format:
 #   {
@@ -158,21 +159,38 @@ if __name__ == "__main__":
     vidcap = cv2.VideoCapture(0)
     Logger = logging.getLogger("debugging logger")
     offset = 10
+    cs = CameraServer.putVideo(CameraServer.getInstance(),"Main",640,480)
+    
     while(True):
-        time.sleep(1)
         ret, frame = vidcap.read()
         #   frame = cv2.resize(frame, (640, 480))
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        frame = cv2.adaptiveThreshold(frame,1,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,11,2)
-        Logger.debug(frame[0][0])
-        image, contours, hier = cv2.findContours(frame, cv2.RETR_TREE,
-                cv2.CHAIN_APPROX_SIMPLE)
-        for c in contours:
-            x, y, w, h = cv2.boundingRect(c)
-            print(x)
         
+        frame = cv2.erode(frame, None, iterations=2)
+        frame = cv2.dilate(frame, None, iterations=4)
+        frame = cv2.threshold(frame, 170, 255, cv2.THRESH_BINARY)[1]
+        
+        cs.putFrame(frame)
+
+        image, contours, hier = cv2.findContours(frame, cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+        boundingRects = []
+        avg = 0
+        for c in contours:
+            if(cv2.contourArea(c)>100):
+                x, y, w, h = cv2.boundingRect(c)
+                avg += w
+                boundingRects.append([x, y, w, h])
+        if(len(contours) > 0):
+            avg /= len(contours)
+        for b in boundingRects:
+            if(b[2]<avg):
+                boundingRects.remove(b)
+            else:
+                print(b)
+                
     #vidcap.release()
     #cv2.destroyAllWindows()
+        
     
     # loop forever
     while True:
