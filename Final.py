@@ -11,10 +11,11 @@ import time
 import sys
 import cv2
 import logging
+import threading
 import numpy as np
 import socket
 from cscore import CameraServer, VideoSource
-from networktables import NetworkTablesInstance
+from networktables import NetworkTables
 
 
 #   JSON format:
@@ -145,13 +146,24 @@ if __name__ == "__main__":
         sys.exit(1)
 
     # start NetworkTables
-    ntinst = NetworkTablesInstance.getDefault()
-    if server:
-        print("Setting up NetworkTables server")
-        ntinst.startServer()
-    else:
-        print("Setting up NetworkTables client for team {}".format(team))
-        ntinst.startClientTeam(team)
+    cond = threading.Condition()
+    notified = [False]
+
+    def connectionListener(connected, info):
+        print(info, '; Connected=%s' % connected)
+        with cond:
+            notified[0] = True
+            cond.notify()
+
+    NetworkTables.initialize(server='10.38.53.2')
+    NetworkTables.addConnectionListener(connectionListener, immediateNotify=True)
+    table = NetworkTables.getTable('Shuffleboard')
+
+    with cond:
+        print("Waiting")
+        if not notified[0]:
+            cond.wait()
+
     
     # start cameras
     
@@ -168,7 +180,7 @@ if __name__ == "__main__":
         
         frame = cv2.erode(frame, None, iterations=2)
         frame = cv2.dilate(frame, None, iterations=4)
-        frame = cv2.threshold(frame, 170, 255, cv2.THRESH_BINARY)[1]
+        frame =  cv2.threshold(frame, 170, 255, cv2.THRESH_BINARY)[1]
         
         cs.putFrame(frame)
 
@@ -187,7 +199,13 @@ if __name__ == "__main__":
                 boundingRects.remove(b)
             else:
                 print(b)
-                
+        
+        table.putNumber("x",x)
+        table.putNumber("y",y)
+        table.putNumber("w",w)
+        table.putNumber("h",h)
+    print("Connected!")
+        
     #vidcap.release()
     #cv2.destroyAllWindows()
         
