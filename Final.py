@@ -17,32 +17,26 @@ import socket
 from cscore import CameraServer, VideoSource
 from networktables import NetworkTables
 
+def inches(inch):
+    return inch/12
 
-#   JSON format:
-#   {
-#       "team": <team number>,
-#       "ntmode": <"client" or "server", "client" if unspecified>
-#       "cameras": [
-#           {
-#               "name": <camera name>
-#               "path": <path, e.g. "/dev/video0">
-#               "pixel format": <"MJPEG", "YUYV", etc>   // optional
-#               "width": <video mode width>              // optional
-#               "height": <video mode height>            // optional
-#               "fps": <video mode fps>                  // optional
-#               "brightness": <percentage brightness>    // optional
-#               "white balance": <"auto", "hold", value> // optional
-#               "exposure": <"auto", "hold", value>      // optional
-#               "properties": [                          // optional
-#                   {
-#                       "name": <property name>
-#                       "value": <property value>
-#                   }
-#               ]
-#           }
-#       ]
-#   }
+def translate(value, leftMin, leftMax, rightMin, rightMax):
+    leftSpan = leftMax - leftMin
+    rightSpan = rightMax - rightMin
+    valueScaled = float(value - leftMin) / float(leftSpan)
+    return rightMin + (valueScaled * rightSpan)
 
+tapeHeight = .5
+focalLength = 500
+d1 = 1
+d2 = inches(8)
+d3 = pow(d1*d1+(d2*d2)/4,1/2)
+d4 = 0
+theta1 = 0
+theta2 = 0
+theta3 = np.arctan(2*d1/d2)
+theta4 = 0
+theta7 = np.arctan(d2/(2*d1))
 configFile = "/boot/frc.json"
 
 logging.basicConfig(level=logging.DEBUG)
@@ -56,6 +50,11 @@ cameraConfigs = []
 """Report parse error."""
 def parseError(str):
     print("config error in '" + configFile + "': " + str, file=sys.stderr)
+
+def takeArea(elem):
+    return elem[4]
+def takeX(elem):
+    return elem[0]
 
 """Read single camera configuration."""
 def readCameraConfig(config):
@@ -144,8 +143,8 @@ if __name__ == "__main__":
     # read configuration
     if not readConfig():
         sys.exit(1)
-
-    # start NetworkTables
+    '''
+    # start NetworkTables 
     cond = threading.Condition()
     notified = [False]
 
@@ -164,48 +163,65 @@ if __name__ == "__main__":
         if not notified[0]:
             cond.wait()
 
-    
+    '''
     # start cameras
     
 
     vidcap = cv2.VideoCapture(0)
     Logger = logging.getLogger("debugging logger")
     offset = 10
-    cs = CameraServer.putVideo(CameraServer.getInstance(),"Main",640,480)
+    cs = CameraServer.putVideo(CameraServer.getInstance(),"Main",1080,720)
     
     while(True):
         ret, frame = vidcap.read()
         #   frame = cv2.resize(frame, (640, 480))
+        
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         
         frame = cv2.erode(frame, None, iterations=2)
         frame = cv2.dilate(frame, None, iterations=4)
         frame =  cv2.threshold(frame, 170, 255, cv2.THRESH_BINARY)[1]
         
-        cs.putFrame(frame)
 
-        image, contours, hier = cv2.findContours(frame, cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+        frame, contours, hier = cv2.findContours(frame, cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
         boundingRects = []
-        avg = 0
+        
         for c in contours:
-            if(cv2.contourArea(c)>100):
-                x, y, w, h = cv2.boundingRect(c)
-                avg += w
-                boundingRects.append([x, y, w, h])
-        if(len(contours) > 0):
-            avg /= len(contours)
-        for b in boundingRects:
-            if(b[2]<avg):
-                boundingRects.remove(b)
+            ca = cv2.contourArea(c)
+            x, y, w, h = cv2.boundingRect(c)
+            boundingRects.append([x, y, w, h, ca])
+        if(len(boundingRects)>1):
+            boundingRects.sort(key=takeArea)
+            boundingRects=boundingRects[len(boundingRects)-2:] 
+            for b in boundingRects:
+                x, y, w, h, ca = b
+                frame = cv2.rectangle(frame,(x,y),(x+w,y+h),(255,255,255),5)
+            boundingRects.sort(key=takeX)
+            tapeLeft = boundingRects[0]
+            tapeRight = boundingRects[1]
+            direction = 0
+            if tapeLeft[3] > tapeRight[3]:
+                direction = 1
+                d4 = tapeHeight*focalLength/tapeLeft[3]
+                d6 = tapeHeight*focalLength/tapeRight[3]
+                theta4 = translate(tapeLeft[0],0,1080,-30,30)
             else:
-                print(b)
-        
-        table.putNumber("x",x)
-        table.putNumber("y",y)
-        table.putNumber("w",w)
-        table.putNumber("h",h)
-    print("Connected!")
-        
+                d6 = tapeHeight*focalLength/tapeLeft[3]
+                d4 = tapeHeight*focalLength/tapeRight[3]
+                theta4 = translate(tapeRight[0],0,1080,-30,30)
+            
+            theta1 = np.arccos((d4*d4+d2*d2-d6*d6)/(2*d4*d2)) - theta3
+            d5 = pow(d3*d3+d4*d4-(2*d3*d4*np.cos(theta1)),1/2)
+            theta2 = np.arcsin(d3*np.sin(theta1)/d5)
+            theta5 = theta2-theta4
+            theta6 = 180-theta7-(180-theta1-theta2)
+            Logger.debug("Rotate: "+str(theta5)+" Forward: "+str(d5)+"Rotate Back: "+str(d6))
+        cs.putFrame(frame)
+        '''   
+        table.putNumber("angle",a)
+        table.putNumber("distance",d)
+        print("connected")
+        '''
     #vidcap.release()
     #cv2.destroyAllWindows()
         
